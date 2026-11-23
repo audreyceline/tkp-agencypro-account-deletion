@@ -47,24 +47,22 @@
 
   <section id="emailStep">
     <h2>Verifikasi Identitas</h2>
-    <p>Masukkan email yang terdaftar pada akun TKP AgencyPro. Kami akan mengirimkan kode verifikasi.</p>
+    <p>Masukkan email yang terdaftar pada akun TKP AgencyPro. Kami akan mengirimkan tautan verifikasi ke email tersebut.</p>
     <label>Email akun</label>
     <input id="email" type="email" autocomplete="email" placeholder="nama@email.com">
-    <button id="sendBtn" onclick="sendOtp()">KIRIM KODE VERIFIKASI</button>
+    <button id="sendBtn" onclick="sendMagicLink()">KIRIM TAUTAN VERIFIKASI</button>
   </section>
 
-  <section id="otpStep" class="hidden">
-    <h2>Masukkan Kode OTP</h2>
-    <p>Periksa email kamu dan masukkan kode enam digit.</p>
-    <label>Kode OTP</label>
-    <input id="otp" inputmode="numeric" maxlength="6" placeholder="123456">
-    <button onclick="verifyOtp()">VERIFIKASI EMAIL</button>
+  <section id="waitingStep" class="hidden">
+    <h2>Periksa Email Kamu</h2>
+    <p>Tautan verifikasi sudah diminta. Buka email pada perangkat ini, lalu tekan tombol tautan masuk. Halaman ini akan terbuka kembali secara otomatis.</p>
+    <button id="resendBtn" onclick="sendMagicLink()">KIRIM ULANG TAUTAN</button>
   </section>
 
   <section id="requestStep" class="hidden">
     <h2>Permintaan Penghapusan Akun</h2>
     <p id="accountInfo"></p>
-    <label>Alasan penghapusan (opsional)</label>
+    <label>Alasan penghapusan (minimal 10 karakter)</label>
     <textarea id="reason" rows="4" maxlength="1000"
       placeholder="Tuliskan alasan penghapusan akun"></textarea>
     <button id="requestBtn" onclick="submitRequest()">AJUKAN PENGHAPUSAN</button>
@@ -82,11 +80,24 @@
 
 <script>
 const SUPABASE_URL = "https://iggqlasoxkaiybcnkrmb.supabase.co";
-const SUPABASE_KEY = "sb_publishable_EitX8oTLAbHbyTNd4en9rQ_0zyj5v8r";
+const SUPABASE_KEY = "sb_publishable_EitX8oTLAbHbyTNd4en9r_Q_0zyj5v8r";
 
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const client = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY,
+  {
+    auth: {
+      flowType: "implicit",
+      detectSessionInUrl: true,
+      persistSession: true,
+      autoRefreshToken: true
+    }
+  }
+);
+
 let currentUser = null;
 let currentProfile = null;
+let profileCheckRunning = false;
 
 function notice(message, error = false) {
   const el = document.getElementById("notice");
@@ -94,75 +105,95 @@ function notice(message, error = false) {
   el.style.color = error ? "#ff8585" : "#d8b66a";
 }
 
-async function sendOtp() {
+async function sendMagicLink() {
   const email = document.getElementById("email").value.trim().toLowerCase();
-  if (!email) return notice("Masukkan email akun terlebih dahulu.", true);
+
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return notice("Masukkan alamat email yang valid.", true);
+  }
 
   const btn = document.getElementById("sendBtn");
+  const resend = document.getElementById("resendBtn");
   btn.disabled = true;
+  if (resend) resend.disabled = true;
+
   try {
     const { error } = await client.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: false }
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: window.location.origin + window.location.pathname
+      }
     });
+
     if (error) throw error;
+
     document.getElementById("emailStep").classList.add("hidden");
-    document.getElementById("otpStep").classList.remove("hidden");
-    notice("Kode verifikasi telah diminta. Periksa email kamu.");
+    document.getElementById("waitingStep").classList.remove("hidden");
+    notice("Tautan verifikasi diminta. Silakan periksa email kamu.");
   } catch (e) {
-    notice("Gagal mengirim kode: " + e.message, true);
+    notice("Gagal meminta tautan: " + e.message, true);
   } finally {
     btn.disabled = false;
+    if (resend) resend.disabled = false;
   }
 }
 
-async function verifyOtp() {
-  const email = document.getElementById("email").value.trim().toLowerCase();
-  const token = document.getElementById("otp").value.trim();
+async function loadVerifiedAccount(user) {
+  if (!user || profileCheckRunning || currentProfile) return;
 
-  if (!/^\d{6}$/.test(token))
-    return notice("Masukkan kode OTP enam digit.", true);
+  profileCheckRunning = true;
+  notice("Verifikasi berhasil. Sedang memeriksa profil akun...");
 
   try {
-    const { data, error } = await client.auth.verifyOtp({
-      email, token, type: "email"
-    });
-    if (error) throw error;
+    currentUser = user;
 
-    currentUser = data.user;
-    if (!currentUser) throw new Error("Identitas akun tidak ditemukan.");
-
-    const { data: profile, error: profileError } = await client
+    const { data: profile, error } = await client
       .from("profiles")
       .select("id, full_name, role, company_id, is_active")
-      .eq("id", currentUser.id)
+      .eq("id", user.id)
       .maybeSingle();
 
-    if (profileError) throw profileError;
+    if (error) throw error;
     if (!profile) throw new Error("Profil TKP AgencyPro tidak ditemukan.");
     if (profile.is_active !== true)
       throw new Error("Akun tidak aktif. Hubungi administrator.");
 
     const role = String(profile.role || "").toLowerCase();
-    if (!["spg", "tl", "ceo", "super_admin"].includes(role))
+
+    if (!["spg", "tl", "ceo", "super_admin"].includes(role)) {
       throw new Error("Jabatan akun tidak memenuhi ketentuan portal.");
+    }
 
     currentProfile = profile;
+
     document.getElementById("accountInfo").textContent =
-      "Akun terverifikasi: " + (profile.full_name || currentUser.email) +
+      "Akun terverifikasi: " +
+      (profile.full_name || user.email) +
       " (" + role.toUpperCase() + ")";
 
-    document.getElementById("otpStep").classList.add("hidden");
+    document.getElementById("emailStep").classList.add("hidden");
+    document.getElementById("waitingStep").classList.add("hidden");
     document.getElementById("requestStep").classList.remove("hidden");
-    notice("Identitas berhasil diverifikasi.");
+
+    notice("Identitas berhasil diverifikasi. Kamu dapat mengajukan penghapusan akun.");
   } catch (e) {
-    notice("Verifikasi gagal: " + e.message, true);
+    notice("Pemeriksaan akun gagal: " + e.message, true);
+  } finally {
+    profileCheckRunning = false;
   }
 }
 
 async function submitRequest() {
-  if (!currentUser || !currentProfile)
-    return notice("Silakan verifikasi identitas terlebih dahulu.", true);
+  if (!currentUser || !currentProfile) {
+    return notice("Verifikasi identitas terlebih dahulu.", true);
+  }
+
+  const reason = document.getElementById("reason").value.trim();
+
+  if (reason.length < 10) {
+    return notice("Alasan penghapusan wajib diisi minimal 10 karakter.", true);
+  }
 
   const btn = document.getElementById("requestBtn");
   btn.disabled = true;
@@ -178,8 +209,10 @@ async function submitRequest() {
       .limit(1);
 
     if (checkError) throw checkError;
-    if (existing && existing.length)
+
+    if (existing && existing.length) {
       throw new Error("Kamu sudah memiliki permintaan yang belum selesai.");
+    }
 
     const { error } = await client
       .from("account_deletion_requests")
@@ -189,7 +222,7 @@ async function submitRequest() {
         requester_email: currentUser.email,
         requester_role: role,
         company_id: currentProfile.company_id,
-        reason: document.getElementById("reason").value.trim(),
+        reason: reason,
         status: role === "super_admin" ? "special_owner_review" : "pending",
         decided_by: null,
         decided_at: null
@@ -198,12 +231,31 @@ async function submitRequest() {
     if (error) throw error;
 
     document.getElementById("requestStep").classList.add("hidden");
-    notice("Permintaan berhasil dikirim. Simpan email ini dan ikuti proses verifikasi serta persetujuan TKP AgencyPro.");
+    notice("Permintaan berhasil dikirim. Permintaan akan ditinjau sesuai prosedur TKP AgencyPro.");
   } catch (e) {
     notice("Permintaan gagal dikirim: " + e.message, true);
     btn.disabled = false;
   }
 }
+
+client.auth.onAuthStateChange((event, session) => {
+  if (session && session.user) {
+    loadVerifiedAccount(session.user);
+  }
+});
+
+(async function restoreSession() {
+  const { data, error } = await client.auth.getSession();
+
+  if (error) {
+    notice("Gagal memeriksa sesi: " + error.message, true);
+    return;
+  }
+
+  if (data.session && data.session.user) {
+    await loadVerifiedAccount(data.session.user);
+  }
+})();
 </script>
 </body>
 </html>
