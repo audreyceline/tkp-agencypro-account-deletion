@@ -1,1 +1,159 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Ajukan penghapusan akun TKP AgencyPro.">
+  <title>Penghapusan Akun — TKP AgencyPro</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--panel2:#172d49;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
+    main{width:min(100%,520px);background:linear-gradient(155deg,#172a45,#101a2b);border:1px solid #8b7547;border-radius:22px;padding:28px;box-shadow:0 24px 70px #0008}
+    .brand{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}.rule{height:1px;background:linear-gradient(90deg,var(--gold),transparent);margin:16px 0 22px}
+    h1{font-size:24px;line-height:1.2;margin:0 0 10px}p{color:var(--muted);line-height:1.6;font-size:14px}
+    label{display:block;font-size:13px;font-weight:700;margin:18px 0 8px;color:#e8d7ad}input,textarea{width:100%;border:1px solid #53647a;border-radius:11px;background:#0d1829;color:#fff;padding:13px;font:inherit;outline:none}input:focus,textarea:focus{border-color:var(--gold)}textarea{min-height:112px;resize:vertical}
+    button{width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:16px;background:linear-gradient(100deg,#b99a5c,#ead39a);color:#101827;font-weight:900;font-size:14px;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+    .notice{display:none;margin-top:16px;padding:13px;border-radius:10px;background:#0b1c2e;border:1px solid #53647a;color:#e7edf6;font-size:13px;line-height:1.5;white-space:pre-wrap}.notice.error{border-color:#a34a4a;color:#ffd5d5}.notice.success{border-color:#3f8b69;color:#d1ffe5}
+    .small{font-size:12px;color:#98a7bb}.hidden{display:none!important}.footer{margin-top:22px;padding-top:14px;border-top:1px solid #ffffff18;font-size:11px;color:#8795a9;line-height:1.5}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<main>
+  <div class="brand">TKP AgencyPro</div>
+  <div class="rule"></div>
+  <h1>Penghapusan Akun</h1>
+  <p>Gunakan halaman ini untuk mengajukan penghapusan akun TKP AgencyPro. Kami akan memverifikasi kepemilikan akun melalui tautan masuk yang dikirim ke email terdaftar.</p>
 
+  <section id="login-section">
+    <label for="email">Email akun TKP AgencyPro</label>
+    <input id="email" type="email" autocomplete="email" placeholder="nama@email.com" required>
+    <button id="send-link">KIRIM TAUTAN VERIFIKASI</button>
+    <p class="small">Tautan hanya dikirim untuk email yang sudah terdaftar. Halaman ini tidak membuat akun baru.</p>
+  </section>
+
+  <section id="request-section" class="hidden">
+    <p id="signed-in-as" class="small"></p>
+    <label for="reason">Alasan penghapusan akun</label>
+    <textarea id="reason" minlength="10" maxlength="1000" placeholder="Tuliskan alasan pengajuan (minimal 10 karakter)..."></textarea>
+    <button id="submit-request">KIRIM PERMINTAAN PENGHAPUSAN</button>
+    <p class="small">Pengajuan akan ditinjau pihak yang berwenang. Pengajuan tidak langsung menghapus akun atau riwayat transaksi perusahaan.</p>
+  </section>
+
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+  <div class="footer">Setelah permintaan disetujui, akun akan dihapus dari Supabase Authentication dan data profil pribadi akan dianonimkan. Riwayat transaksi dan laporan perusahaan yang wajib dipertahankan tidak ikut dihapus.</div>
+</main>
+<script>
+(() => {
+  const SUPABASE_URL = 'https://iggqlasoxkaiybcnkrmb.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_EitX8oTLAbHbyTNd4en9rQ_0zyj5v8r';
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+  });
+  const $ = (id) => document.getElementById(id);
+  const notice = (message, type='') => {
+    $('notice').textContent = message;
+    $('notice').className = `notice ${type}`;
+    $('notice').style.display = 'block';
+  };
+  const setBusy = (button, busy, label) => { button.disabled = busy; button.textContent = busy ? 'MEMPROSES...' : label; };
+
+  async function showRequestForm() {
+    const { data: { user }, error: userError } = await client.auth.getUser();
+    if (userError || !user) {
+      $('login-section').classList.remove('hidden');
+      $('request-section').classList.add('hidden');
+      return;
+    }
+    const { data: profile, error } = await client.from('profiles')
+      .select('full_name,role,company_id').eq('id', user.id).maybeSingle();
+    if (error || !profile) {
+      notice('Profil akun tidak ditemukan. Pastikan Anda menggunakan email akun TKP AgencyPro yang benar.', 'error');
+      return;
+    }
+    const role = String(profile.role || '').toLowerCase();
+    if (!['spg','tl','ceo','super_admin'].includes(role)) {
+      notice('Peran akun ini belum mendukung pengajuan penghapusan melalui halaman ini. Hubungi administrator perusahaan.', 'error');
+      return;
+    }
+    $('login-section').classList.add('hidden');
+    $('request-section').classList.remove('hidden');
+    $('signed-in-as').textContent = `Terverifikasi: ${user.email} • ${role.toUpperCase()}`;
+
+    const { data: existing, error: existingError } = await client.from('account_deletion_requests')
+      .select('status').eq('requester_id', user.id).order('created_at', {ascending:false}).limit(1);
+    if (!existingError && existing && existing.length && ['pending','approved','special_owner_review'].includes(existing[0].status)) {
+      $('reason').disabled = true;
+      $('submit-request').disabled = true;
+      notice('Permintaan penghapusan akun Anda sudah tercatat. Status: ' + existing[0].status + '. Tidak perlu mengirim permintaan baru.', 'success');
+    }
+  }
+
+  $('send-link').addEventListener('click', async () => {
+    const button = $('send-link');
+    const email = $('email').value.trim();
+    if (!email) return notice('Masukkan email akun terlebih dahulu.', 'error');
+    setBusy(button, true, 'KIRIM TAUTAN VERIFIKASI');
+    try {
+      const { error } = await client.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+          emailRedirectTo: window.location.origin + '/delete-account/'
+        }
+      });
+      if (error) throw error;
+      notice('Jika email tersebut terdaftar, tautan verifikasi akan dikirim. Buka tautan dari perangkat/browser ini untuk melanjutkan.', 'success');
+    } catch (error) {
+      notice('Tautan verifikasi tidak dapat dikirim: ' + (error.message || 'Terjadi kesalahan.'), 'error');
+    } finally { setBusy(button, false, 'KIRIM TAUTAN VERIFIKASI'); }
+  });
+
+  $('submit-request').addEventListener('click', async () => {
+    const button = $('submit-request');
+    const reason = $('reason').value.trim();
+    if (reason.length < 10) return notice('Alasan pengajuan minimal 10 karakter.', 'error');
+    setBusy(button, true, 'KIRIM PERMINTAAN PENGHAPUSAN');
+    try {
+      const { data: { user }, error: userError } = await client.auth.getUser();
+      if (userError || !user) throw new Error('Sesi verifikasi tidak ditemukan. Ulangi verifikasi email.');
+      const { data: profile, error: profileError } = await client.from('profiles')
+        .select('full_name,role,company_id').eq('id', user.id).maybeSingle();
+      if (profileError || !profile) throw new Error('Profil akun tidak ditemukan.');
+      const role = String(profile.role || '').toLowerCase();
+      if (!['spg','tl','ceo','super_admin'].includes(role)) throw new Error('Peran akun tidak memenuhi syarat.');
+      const { data: existing, error: existingError } = await client.from('account_deletion_requests')
+        .select('status').eq('requester_id', user.id).order('created_at', {ascending:false}).limit(1);
+      if (existingError) throw existingError;
+      if (existing && existing.length && ['pending','approved','special_owner_review'].includes(existing[0].status)) {
+        throw new Error('Permintaan penghapusan akun Anda sudah tercatat.');
+      }
+      const { error } = await client.from('account_deletion_requests').insert({
+        requester_id: user.id,
+        requester_name: profile.full_name || user.email || 'Pengguna',
+        requester_email: user.email,
+        requester_role: role,
+        company_id: profile.company_id,
+        reason,
+        status: role === 'super_admin' ? 'special_owner_review' : 'pending'
+      });
+      if (error) throw error;
+      notice('Permintaan penghapusan berhasil dikirim. Anda akan menerima tindak lanjut sesuai prosedur TKP AgencyPro.', 'success');
+      $('reason').disabled = true;
+      button.disabled = true;
+      await client.auth.signOut();
+    } catch (error) {
+      notice('Permintaan belum berhasil dikirim: ' + (error.message || 'Terjadi kesalahan.'), 'error');
+      setBusy(button, false, 'KIRIM PERMINTAAN PENGHAPUSAN');
+    }
+  });
+
+  client.auth.onAuthStateChange((_event, session) => {
+    if (session) showRequestForm().catch((error) => notice(error.message || 'Gagal memuat akun.', 'error'));
+  });
+  showRequestForm().catch((error) => notice(error.message || 'Gagal memuat akun.', 'error'));
+})();
+</script>
+</body>
+</html>
