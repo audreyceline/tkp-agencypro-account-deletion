@@ -45,19 +45,33 @@
     const tokenHash = params.get('token_hash');
     const type = params.get('type') || 'signup';
 
+    // PKCE verifier belongs to the Flutter app that initiated signup.
+    // Return the callback to that app instead of exchanging the code in Chrome.
+    if (code) {
+      const callback = new URL('com.thekintiewproject.agencypro://login-callback/');
+      callback.searchParams.set('code', code);
+      show(
+        'Lanjutkan Verifikasi di Aplikasi',
+        'Kode verifikasi sudah diterima. Untuk menyelesaikan proses dengan aman, buka kembali TKP AgencyPro pada perangkat tempat pendaftaran dilakukan.',
+        'Tekan tombol di bawah. Jangan bagikan tautan atau kode verifikasi ini kepada siapa pun.',
+        'info'
+      );
+      const returnLink = $('return-link');
+      returnLink.href = callback.toString();
+      returnLink.textContent = 'LANJUTKAN DI APLIKASI TKP AGENCYPRO';
+      returnLink.hidden = false;
+      return;
+    }
+
     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
     });
 
     let data, error;
-    // Supabase PKCE confirmation redirects with ?code=...
-    if (code) {
-      ({ data, error } = await client.auth.exchangeCodeForSession(code));
-    } else if (tokenHash && (type === 'signup' || type === 'email')) {
-      // Also support confirmation links configured to pass token_hash directly.
+    if (tokenHash && (type === 'signup' || type === 'email')) {
       ({ data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type }));
     } else {
-      show('Tautan Verifikasi Tidak Lengkap', 'Tautan yang dibuka tidak berisi kode verifikasi yang diperlukan.', 'Buka kembali email verifikasi terbaru dari TKP AgencyPro. Jika tautan sudah pernah digunakan atau kedaluwarsa, minta bantuan administrator.', 'error');
+      show('Tautan Verifikasi Tidak Lengkap', 'Tautan yang dibuka tidak berisi kode verifikasi yang diperlukan.', 'Buka kembali email verifikasi terbaru dari TKP AgencyPro. Jika tautan sudah pernah digunakan atau kedaluwarsa, minta administrator mengirim tautan baru.', 'error');
       return;
     }
     if (error) throw error;
@@ -65,9 +79,10 @@
       throw new Error('Supabase belum mengembalikan status email terverifikasi.');
     }
 
-    // Hapus token sekali pakai dari address bar setelah proses berhasil.
     window.history.replaceState({}, document.title, window.location.pathname);
     show('Email Berhasil Diverifikasi!', 'Alamat email akun TKP AgencyPro Anda sudah berhasil dikonfirmasi.', 'Verifikasi selesai. Sekarang Anda dapat kembali ke aplikasi TKP AgencyPro dan login menggunakan email serta kata sandi yang didaftarkan.', 'success');
+    $('return-link').href = 'https://tkpagencypro.com/';
+    $('return-link').textContent = 'KEMBALI KE TKP AGENCYPRO';
     $('return-link').hidden = false;
   } catch (error) {
     const message = error && error.message ? error.message : 'Terjadi kesalahan yang tidak diketahui.';
