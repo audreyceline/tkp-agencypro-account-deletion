@@ -1,1 +1,71 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Verifikasi email TKP AgencyPro.">
+  <title>Verifikasi Email — TKP AgencyPro</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
+    main{width:min(100%,520px);background:linear-gradient(155deg,#172a45,#101a2b);border:1px solid #8b7547;border-radius:22px;padding:30px;box-shadow:0 24px 70px #0008;text-align:center}
+    .brand{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}.mark{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;margin:22px auto 16px;background:#d8b87518;border:1px solid #d8b87566;color:var(--gold);font-size:30px}
+    h1{font-size:23px;margin:0 0 12px}p{color:var(--muted);line-height:1.65;margin:0 0 14px}.notice{padding:13px 15px;border:1px solid var(--line);border-radius:12px;margin-top:18px;line-height:1.55;overflow-wrap:anywhere}.notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}.notice.error{border-color:#a65c5c;background:#3b1b25;color:#ffe2e2}.notice.info{border-color:#657c9c;background:#172a45;color:#e4edfa}
+    a{display:inline-block;margin-top:18px;padding:12px 18px;border-radius:12px;background:var(--gold);color:#111827;text-decoration:none;font-weight:800}.small{font-size:12px;margin-top:22px;color:#8795a9}
+  </style>
+</head>
+<body>
+<main>
+  <div class="brand">THE KINTIEW PROJECT · TKP AGENCYPRO</div>
+  <div class="mark" id="mark">✉</div>
+  <h1 id="heading">Memeriksa Verifikasi Email</h1>
+  <p id="description">Mohon tunggu. Kami sedang memverifikasi alamat email Anda dengan aman.</p>
+  <div id="notice" class="notice info" role="status" aria-live="polite">Menghubungkan ke Supabase…</div>
+  <a id="return-link" href="com.example.tkpagencypro://login-callback/verified" hidden>KEMBALI KE TKP AGENCYPRO</a>
+  <p class="small">Jika verifikasi berhasil, silakan kembali ke aplikasi TKP AgencyPro dan masuk menggunakan akun Anda.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(async () => {
+  const SUPABASE_URL = 'https://iggqlasoxkaiybcnkrmb.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_EitX8oTLAbHbyTNd4en9rQ_0zyj5v8r';
+  const $ = (id) => document.getElementById(id);
+  const show = (heading, description, message, state) => {
+    $('heading').textContent = heading;
+    $('description').textContent = description;
+    $('notice').textContent = message;
+    $('notice').className = 'notice ' + state;
+    $('mark').textContent = state === 'success' ? '✓' : state === 'error' ? '!' : '✉';
+  };
 
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const tokenHash = params.get('token_hash');
+    const type = params.get('type');
+    if (!tokenHash || type !== 'signup') {
+      show('Tautan Verifikasi Tidak Lengkap', 'Tautan yang dibuka tidak berisi informasi verifikasi yang diperlukan.', 'Buka kembali email verifikasi terbaru dari TKP AgencyPro. Jika tautan sudah pernah digunakan atau kedaluwarsa, minta bantuan administrator.', 'error');
+      return;
+    }
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    });
+    const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'signup' });
+    if (error) throw error;
+    if (!data || !data.user || !data.user.email_confirmed_at) {
+      throw new Error('Supabase belum mengembalikan status email terverifikasi.');
+    }
+
+    // Hapus token sekali pakai dari address bar setelah proses berhasil.
+    window.history.replaceState({}, document.title, window.location.pathname);
+    show('Email Berhasil Diverifikasi!', 'Alamat email akun TKP AgencyPro Anda sudah berhasil dikonfirmasi.', 'Verifikasi selesai. Tekan tombol di bawah untuk membuka aplikasi TKP AgencyPro, lalu login menggunakan email serta kata sandi yang didaftarkan.', 'success');
+    $('return-link').hidden = false;
+  } catch (error) {
+    const message = error && error.message ? error.message : 'Terjadi kesalahan yang tidak diketahui.';
+    show('Verifikasi Email Belum Berhasil', 'Kami belum dapat mengonfirmasi alamat email Anda.', message + ' Pastikan Anda menggunakan tautan terbaru dan belum pernah menggunakannya sebelumnya.', 'error');
+  }
+})();
+</script>
+</body>
+</html>
