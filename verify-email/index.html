@@ -39,75 +39,58 @@
     $('notice').className = 'notice ' + state;
     $('mark').textContent = state === 'success' ? '✓' : state === 'error' ? '!' : '✉';
   };
-  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-  });
 
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const params = new URLSearchParams(window.location.search);
+  const tokenHash = params.get('token_hash');
+  const type = params.get('type');
 
-    // Setelah tombol konfirmasi ditekan, Supabase dapat mengembalikan PKCE code.
-    const code = params.get('code') || hashParams.get('code');
-    if (code) {
-      show('Menyelesaikan Verifikasi', 'Supabase sedang menyelesaikan konfirmasi email Anda.', 'Mohon tunggu sebentar…', 'info');
-      const { data, error } = await client.auth.exchangeCodeForSession(code);
+  if (!tokenHash || type !== 'signup') {
+    const errorCode = params.get('error_code');
+    const errorDescription = params.get('error_description');
+    if (errorCode || params.get('error')) {
+      show('Verifikasi Email Belum Berhasil', 'Supabase belum dapat menyelesaikan konfirmasi email.',
+        (errorCode || 'AUTH_ERROR') + ': ' + (errorDescription || 'Tautan tidak dapat diproses.') +
+        ' Silakan minta email konfirmasi baru.', 'error');
+    } else {
+      show('Tautan Verifikasi Tidak Lengkap', 'Halaman ini belum menerima token verifikasi yang diperlukan.',
+        'Pastikan template Confirm signup menggunakan {{ .TokenHash }} dan type=signup.', 'error');
+    }
+    return;
+  }
+
+  show('Konfirmasi Email Anda', 'Tekan tombol di bawah untuk mengonfirmasi alamat email TKP AgencyPro.',
+    'Token siap diproses. Verifikasi baru berjalan setelah tombol ditekan.', 'info');
+  $('confirm-link').hidden = false;
+
+  $('confirm-link').addEventListener('click', async (event) => {
+    event.preventDefault();
+    $('confirm-link').hidden = true;
+    show('Memproses Verifikasi', 'Supabase sedang memeriksa token konfirmasi Anda.',
+      'Mohon tunggu dan jangan tutup halaman ini…', 'info');
+
+    try {
+      const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+      const { data, error } = await client.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: 'signup'
+      });
       if (error) throw error;
       if (!data || !data.user || !data.user.email_confirmed_at) {
         throw new Error('Supabase belum mengembalikan status email terverifikasi.');
       }
+
       window.history.replaceState({}, document.title, window.location.pathname);
-      show('Email Berhasil Diverifikasi!', 'Alamat email akun TKP AgencyPro Anda sudah berhasil dikonfirmasi.', 'Verifikasi selesai. Silakan kembali ke aplikasi TKP AgencyPro dan login.', 'success');
+      show('Email Berhasil Diverifikasi!', 'Alamat email akun TKP AgencyPro Anda sudah berhasil dikonfirmasi.',
+        'Verifikasi selesai. Silakan kembali ke aplikasi TKP AgencyPro dan login.', 'success');
       $('return-link').hidden = false;
-      return;
+    } catch (error) {
+      const message = error && error.message ? error.message : 'Terjadi kesalahan yang tidak diketahui.';
+      show('Verifikasi Email Belum Berhasil', 'Kami belum dapat mengonfirmasi alamat email Anda.',
+        message + ' Silakan minta email konfirmasi baru dan gunakan tautan terbaru.', 'error');
     }
-
-    const errorCode = params.get('error_code') || hashParams.get('error_code');
-    const errorDescription = params.get('error_description') || hashParams.get('error_description');
-    if (errorCode || params.get('error') || hashParams.get('error')) {
-      show('Verifikasi Email Belum Berhasil', 'Supabase belum dapat menyelesaikan konfirmasi email.', (errorCode || 'AUTH_ERROR') + ': ' + (errorDescription || 'Tautan tidak dapat diproses.') + ' Silakan minta email konfirmasi baru.', 'error');
-      return;
-    }
-
-    // Template Confirm Signup meneruskan ConfirmationURL ke halaman perantara.
-    let confirmationUrl = params.get('confirmation_url');
-    if (confirmationUrl) {
-      let target;
-      try { target = new URL(confirmationUrl); } catch (_) { target = null; }
-      if (!target) throw new Error('Alamat konfirmasi tidak valid.');
-
-      // Jika URL dimasukkan ke query tanpa URL-encoding, parameter setelah
-      // confirmation_url akan terbaca sebagai parameter halaman ini.
-      for (const [key, value] of params.entries()) {
-        if (key !== 'confirmation_url' && !target.searchParams.has(key)) {
-          target.searchParams.set(key, value);
-        }
-      }
-      if (target.protocol !== 'https:' ||
-          target.hostname !== 'iggqlasoxkaiybcnkrmb.supabase.co' ||
-          target.pathname !== '/auth/v1/verify') {
-        throw new Error('Alamat konfirmasi bukan endpoint Supabase TKP AgencyPro.');
-      }
-
-      $('heading').textContent = 'Konfirmasi Email Anda';
-      $('description').textContent = 'Tekan tombol di bawah untuk melanjutkan verifikasi email TKP AgencyPro.';
-      $('notice').textContent = 'Tautan siap diproses. Verifikasi hanya berjalan setelah Anda menekan tombol.';
-      $('notice').className = 'notice info';
-      $('confirm-link').href = target.toString();
-      $('confirm-link').hidden = false;
-      $('confirm-link').addEventListener('click', (event) => {
-        event.preventDefault();
-        show('Memproses Konfirmasi', 'Anda sedang diarahkan ke Supabase untuk memverifikasi email.', 'Mohon jangan tutup halaman ini…', 'info');
-        window.location.assign(target.toString());
-      }, { once: true });
-      return;
-    }
-
-    show('Tautan Verifikasi Tidak Lengkap', 'Halaman ini belum menerima tautan konfirmasi dari email.', 'Pastikan template Confirm signup menggunakan tautan perantara dengan variabel {{ .ConfirmationURL }}.', 'error');
-  } catch (error) {
-    const message = error && error.message ? error.message : 'Terjadi kesalahan yang tidak diketahui.';
-    show('Verifikasi Email Belum Berhasil', 'Kami belum dapat menyelesaikan konfirmasi email Anda.', message + ' Silakan minta email konfirmasi baru dan gunakan tautan terbaru.', 'error');
-  }
+  });
 })();
 </script>
 </body>
