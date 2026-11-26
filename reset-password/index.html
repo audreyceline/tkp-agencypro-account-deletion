@@ -1,1 +1,187 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Atur ulang kata sandi akun TKP AgencyPro.">
+  <title>Reset Password — TKP AgencyPro</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
+    main{width:min(100%,480px);background:linear-gradient(155deg,#172a45,#101a2b);border:1px solid #8b7547;border-radius:22px;padding:30px;box-shadow:0 24px 70px #0008}
+    .brand{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}
+    .mark{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;margin:22px 0 18px;background:#d8b87518;border:1px solid #d8b87566;color:var(--gold);font-size:27px}
+    h1{font-size:24px;line-height:1.25;margin:0 0 10px}
+    p{color:var(--muted);line-height:1.65;margin:0 0 15px;font-size:14px}
+    label{display:block;color:#e8d7ad;font-size:13px;font-weight:700;margin:18px 0 8px}
+    .field{position:relative}
+    input{width:100%;border:1px solid #53647a;border-radius:11px;background:#0d1829;color:#fff;padding:14px;font:inherit;outline:none}
+    input:focus{border-color:var(--gold);box-shadow:0 0 0 3px #d8b87518}
+    button{width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:18px;background:linear-gradient(100deg,#b99a5c,#ead39a);color:#101827;font-weight:900;font-size:14px;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    .notice{padding:13px 15px;border:1px solid var(--line);border-radius:12px;margin-top:18px;line-height:1.55;font-size:13px;overflow-wrap:anywhere;background:#172a45;color:#e4edfa}
+    .notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}
+    .notice.error{border-color:#a65c5c;background:#3b1b25;color:#ffe2e2}
+    .hidden{display:none!important}
+    .small{font-size:12px;margin-top:22px;color:#8795a9;text-align:center}
+    .back{display:inline-block;margin-top:16px;color:var(--gold);font-size:13px;font-weight:700;text-decoration:none}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<main>
+  <div class="brand">THE KINTIEW PROJECT · TKP AGENCYPRO</div>
+  <div class="mark" aria-hidden="true">✦</div>
+  <h1 id="heading">Atur Ulang Password</h1>
+  <p id="description">Buat kata sandi baru untuk akun TKP AgencyPro Anda. Gunakan kata sandi yang kuat dan jangan bagikan kepada siapa pun.</p>
 
+  <section id="form-section" class="hidden">
+    <form id="reset-form">
+      <label for="password">Password baru</label>
+      <input id="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Minimal 8 karakter">
+      <label for="confirm-password">Konfirmasi password baru</label>
+      <input id="confirm-password" type="password" autocomplete="new-password" minlength="8" required placeholder="Ulangi password baru">
+      <button id="submit-button" type="submit">SIMPAN PASSWORD BARU</button>
+    </form>
+  </section>
+
+  <div id="notice" class="notice" role="status" aria-live="polite">Memeriksa tautan pemulihan…</div>
+  <a id="login-link" class="back hidden" href="https://www.tkpagencypro.com/">KEMBALI KE TKP AGENCYPRO</a>
+  <p class="small">Halaman aman pemulihan akun · TKP AgencyPro</p>
+</main>
+<script>
+(async () => {
+  'use strict';
+
+  const SUPABASE_URL = 'https://iggqlasoxkaiybcnkrmb.supabase.co';
+  const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_EitX8oTLAbHbyTNd4en9rQ_0zyj5v8r';
+  const $ = (id) => document.getElementById(id);
+  const showNotice = (message, state = '') => {
+    $('notice').textContent = message;
+    $('notice').className = 'notice' + (state ? ' ' + state : '');
+  };
+  const showForm = () => {
+    $('form-section').classList.remove('hidden');
+    $('heading').textContent = 'Buat Password Baru';
+    $('description').textContent = 'Tautan pemulihan berhasil diverifikasi. Masukkan password baru Anda di bawah ini.';
+    showNotice('Identitas pemulihan berhasil diverifikasi. Silakan buat password baru.', 'success');
+  };
+  const showError = (message) => {
+    $('form-section').classList.add('hidden');
+    $('heading').textContent = 'Tautan Tidak Dapat Digunakan';
+    $('description').textContent = 'Tautan pemulihan mungkin sudah kedaluwarsa atau pernah digunakan.';
+    showNotice(message + ' Kembali ke aplikasi dan minta tautan Lupa Password yang baru.', 'error');
+  };
+
+  if (!window.supabase || !window.supabase.createClient) {
+    showError('Layanan autentikasi tidak dapat dimuat. Periksa koneksi internet lalu coba lagi.');
+    return;
+  }
+
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+
+  let recoveryReady = false;
+  let submitting = false;
+  const params = new URLSearchParams(window.location.search);
+  const tokenHash = params.get('token_hash');
+  const type = params.get('type');
+  const hasCode = params.has('code');
+
+  // Support the explicit token_hash template and Supabase PKCE/code callback.
+  if (tokenHash) {
+    if (type !== 'recovery') {
+      showError('Jenis token pemulihan tidak sesuai.');
+      return;
+    }
+    try {
+      const { data, error } = await client.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: 'recovery'
+      });
+      if (error) throw error;
+      if (!data || !data.session) throw new Error('Sesi pemulihan tidak berhasil dibuat.');
+      recoveryReady = true;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      showForm();
+    } catch (error) {
+      showError(error && error.message ? error.message : 'Token pemulihan tidak valid.');
+    }
+  } else {
+    try {
+      // Supabase JS handles the ?code= PKCE exchange or access_token hash.
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      if (data && data.session && (hasCode || window.location.hash.includes('access_token'))) {
+        recoveryReady = true;
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showForm();
+      } else {
+        showError('Token pemulihan tidak ditemukan pada tautan ini.');
+      }
+    } catch (error) {
+      showError(error && error.message ? error.message : 'Sesi pemulihan tidak dapat diverifikasi.');
+    }
+  }
+
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY' && session) {
+      recoveryReady = true;
+      showForm();
+    }
+  });
+
+  $('reset-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!recoveryReady || submitting) return;
+    const password = $('password').value;
+    const confirmation = $('confirm-password').value;
+    if (password.length < 8) {
+      showNotice('Password minimal harus 8 karakter.', 'error');
+      return;
+    }
+    if (password !== confirmation) {
+      showNotice('Konfirmasi password tidak sama.', 'error');
+      return;
+    }
+
+    submitting = true;
+    const button = $('submit-button');
+    button.disabled = true;
+    button.textContent = 'MENYIMPAN…';
+    try {
+      const { error } = await client.auth.updateUser({ password });
+      if (error) throw error;
+
+      $('form-section').classList.add('hidden');
+      $('heading').textContent = 'Password Berhasil Diperbarui';
+      $('description').textContent = 'Password akun TKP AgencyPro Anda sudah berhasil diganti. Sekarang Anda dapat login menggunakan password baru.';
+      showNotice('Password baru berhasil disimpan. Silakan kembali ke aplikasi TKP AgencyPro dan login.', 'success');
+      $('login-link').classList.remove('hidden');
+      $('password').value = '';
+      $('confirm-password').value = '';
+
+      // End the browser recovery session after the password has been changed.
+      await client.auth.signOut();
+    } catch (error) {
+      showNotice('Password belum berhasil diperbarui: ' +
+        (error && error.message ? error.message : 'Terjadi kesalahan.'), 'error');
+    } finally {
+      submitting = false;
+      if (!$('form-section').classList.contains('hidden')) {
+        button.disabled = false;
+        button.textContent = 'SIMPAN PASSWORD BARU';
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>
