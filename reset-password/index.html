@@ -32,7 +32,7 @@
 </head>
 <body>
 <main>
-  <div class="brand">THE KINTIEW PROJECT · TKP AGENCYPRO</div>
+  <div class="brand" id="brand-label">TKP AGENCYPRO</div>
   <div class="mark" aria-hidden="true">✦</div>
   <h1 id="heading">Atur Ulang Password</h1>
   <p id="description">Buat kata sandi baru untuk akun TKP AgencyPro Anda. Gunakan kata sandi yang kuat dan jangan bagikan kepada siapa pun.</p>
@@ -75,6 +75,37 @@
     showNotice(message + ' Kembali ke aplikasi dan minta tautan Lupa Password yang baru.', 'error');
   };
 
+  // Brand the recovery page with the company linked to the verified account.
+  // The company name is never accepted from URL parameters or user metadata.
+  const loadCompanyBrand = async (userId) => {
+    const brand = $('brand-label');
+    brand.textContent = 'TKP AGENCYPRO';
+    if (!userId) return;
+
+    try {
+      const { data: profile, error: profileError } = await client
+        .from('profiles')
+        .select('company_id')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile || !profile.company_id) return;
+
+      const { data: company, error: companyError } = await client
+        .from('companies')
+        .select('company_name')
+        .eq('id', profile.company_id)
+        .maybeSingle();
+      if (companyError) throw companyError;
+      if (company && typeof company.company_name === 'string' && company.company_name.trim()) {
+        brand.textContent = 'TKP AGENCYPRO • ' + company.company_name.trim().toLocaleUpperCase('id-ID');
+      }
+    } catch (error) {
+      // Keep the platform brand if company lookup is unavailable; recovery itself remains usable.
+      console.warn('Nama perusahaan tidak dapat dimuat untuk branding halaman pemulihan.', error);
+    }
+  };
+
   if (!window.supabase || !window.supabase.createClient) {
     showError('Layanan autentikasi tidak dapat dimuat. Periksa koneksi internet lalu coba lagi.');
     return;
@@ -109,6 +140,7 @@
       if (error) throw error;
       if (!data || !data.session) throw new Error('Sesi pemulihan tidak berhasil dibuat.');
       recoveryReady = true;
+      await loadCompanyBrand(data.session.user && data.session.user.id);
       window.history.replaceState({}, document.title, window.location.pathname);
       showForm();
     } catch (error) {
@@ -121,6 +153,7 @@
       if (error) throw error;
       if (data && data.session && (hasCode || window.location.hash.includes('access_token'))) {
         recoveryReady = true;
+        await loadCompanyBrand(data.session.user && data.session.user.id);
         window.history.replaceState({}, document.title, window.location.pathname);
         showForm();
       } else {
