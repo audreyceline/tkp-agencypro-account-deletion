@@ -7,21 +7,32 @@
   <meta name="description" content="Ajukan penghapusan akun TKP AgencyPro.">
   <title>Penghapusan Akun — TKP AgencyPro</title>
   <style>
-    :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--panel2:#172d49;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
-    main{width:min(100%,520px);background:linear-gradient(155deg,#172a45,#101a2b);border:1px solid #8b7547;border-radius:22px;padding:28px;box-shadow:0 24px 70px #0008}
-    .brand{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}.rule{height:1px;background:linear-gradient(90deg,var(--gold),transparent);margin:16px 0 22px}
-    h1{font-size:24px;line-height:1.2;margin:0 0 10px}p{color:var(--muted);line-height:1.6;font-size:14px}
-    label{display:block;font-size:13px;font-weight:700;margin:18px 0 8px;color:#e8d7ad}input,textarea{width:100%;border:1px solid #53647a;border-radius:11px;background:#0d1829;color:#fff;padding:13px;font:inherit;outline:none}input:focus,textarea:focus{border-color:var(--gold)}textarea{min-height:112px;resize:vertical}
-    button{width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:16px;background:linear-gradient(100deg,#b99a5c,#ead39a);color:#101827;font-weight:900;font-size:14px;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
-    .notice{display:none;margin-top:16px;padding:13px;border-radius:10px;background:#0b1c2e;border:1px solid #53647a;color:#e7edf6;font-size:13px;line-height:1.5;white-space:pre-wrap}.notice.error{border-color:#a34a4a;color:#ffd5d5}.notice.success{border-color:#3f8b69;color:#d1ffe5}
-    .small{font-size:12px;color:#98a7bb}.hidden{display:none!important}.footer{margin-top:22px;padding-top:14px;border-top:1px solid #ffffff18;font-size:11px;color:#8795a9;line-height:1.5}
+    :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
+    main{width:min(100%,480px);background:linear-gradient(155deg,#172a45,#101a2b);border:1px solid #8b7547;border-radius:22px;padding:30px;box-shadow:0 24px 70px #0008}
+    .brand{color:var(--gold);font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase}
+    .rule{height:1px;background:linear-gradient(90deg,var(--gold),transparent);margin:16px 0 22px}
+    h1{font-size:24px;line-height:1.25;margin:0 0 10px}
+    p{color:var(--muted);line-height:1.65;margin:0 0 15px;font-size:14px}
+    label{display:block;color:#e8d7ad;font-size:13px;font-weight:700;margin:18px 0 8px}
+    input,textarea{width:100%;border:1px solid #53647a;border-radius:11px;background:#0d1829;color:#fff;padding:14px;font:inherit;outline:none}
+    input:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px #d8b87518}
+    textarea{min-height:112px;resize:vertical}
+    button{width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:18px;background:linear-gradient(100deg,#b99a5c,#ead39a);color:#101827;font-weight:900;font-size:14px;cursor:pointer}
+    button:disabled{opacity:.55;cursor:wait}
+    .notice{display:none;margin-top:18px;padding:13px 15px;border:1px solid var(--line);border-radius:12px;line-height:1.55;font-size:13px;overflow-wrap:anywhere;background:#172a45;color:#e4edfa;white-space:pre-wrap}
+    .notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}
+    .notice.error{border-color:#a65c5c;background:#3b1b25;color:#ffe2e2}
+    .small{font-size:12px;margin-top:22px;color:#8795a9}
+    .hidden{display:none!important}
+    .footer{margin-top:22px;padding-top:14px;border-top:1px solid #ffffff18;font-size:11px;color:#8795a9;line-height:1.5}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <main>
-  <div class="brand">TKP AgencyPro</div>
+  <div class="brand" id="brand-label">TKP AGENCYPRO</div>
   <div class="rule"></div>
   <h1>Penghapusan Akun</h1>
   <p>Gunakan halaman ini untuk mengajukan penghapusan akun TKP AgencyPro. Kami akan memverifikasi kepemilikan akun melalui tautan masuk yang dikirim ke email terdaftar.</p>
@@ -59,6 +70,23 @@
   };
   const setBusy = (button, busy, label) => { button.disabled = busy; button.textContent = busy ? 'MEMPROSES...' : label; };
 
+  // Company branding is resolved only from the signed-in user's profile company_id.
+  async function loadCompanyBrand(companyId) {
+    const brand = $('brand-label');
+    brand.textContent = 'TKP AGENCYPRO';
+    if (!companyId) return;
+    try {
+      const { data: company, error } = await client.from('companies')
+        .select('company_name').eq('id', companyId).maybeSingle();
+      if (error) throw error;
+      if (company && typeof company.company_name === 'string' && company.company_name.trim()) {
+        brand.textContent = 'TKP AGENCYPRO • ' + company.company_name.trim().toLocaleUpperCase('id-ID');
+      }
+    } catch (error) {
+      console.warn('Nama perusahaan tidak dapat dimuat untuk halaman penghapusan akun.', error);
+    }
+  }
+
   async function showRequestForm() {
     const { data: { user }, error: userError } = await client.auth.getUser();
     if (userError || !user) {
@@ -72,6 +100,7 @@
       notice('Profil akun tidak ditemukan. Pastikan Anda menggunakan email akun TKP AgencyPro yang benar.', 'error');
       return;
     }
+    await loadCompanyBrand(profile.company_id);
     const role = String(profile.role || '').toLowerCase();
     if (!['spg','tl','ceo','super_admin'].includes(role)) {
       notice('Peran akun ini belum mendukung pengajuan penghapusan melalui halaman ini. Hubungi administrator perusahaan.', 'error');
@@ -100,13 +129,14 @@
         email,
         options: {
           shouldCreateUser: false,
-          emailRedirectTo: window.location.origin + '/delete-account/'
+          emailRedirectTo: window.location.origin + '/delete-account/verify-email/'
         }
       });
       if (error) throw error;
-      notice('Jika email tersebut terdaftar, tautan verifikasi akan dikirim. Buka tautan dari perangkat/browser ini untuk melanjutkan.', 'success');
+      notice('Jika email tersebut terdaftar, tautan verifikasi akan dikirim. Buka tautan dari email untuk melanjutkan pengajuan. Demi keamanan, informasi ini tidak mengungkap apakah email terdaftar.', 'success');
     } catch (error) {
-      notice('Tautan verifikasi tidak dapat dikirim: ' + (error.message || 'Terjadi kesalahan.'), 'error');
+      console.warn('Permintaan tautan penghapusan akun gagal diproses.', error);
+      notice('Tautan verifikasi belum dapat dikirim. Periksa alamat email dan coba kembali beberapa saat lagi.', 'error');
     } finally { setBusy(button, false, 'KIRIM TAUTAN VERIFIKASI'); }
   });
 
