@@ -22,7 +22,7 @@
     button{width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:18px;background:linear-gradient(100deg,#b99a5c,#ead39a);color:#101827;font-weight:900;font-size:14px;cursor:pointer}
     button:disabled{opacity:.55;cursor:wait}
     .notice{display:none;margin-top:18px;padding:13px 15px;border:1px solid var(--line);border-radius:12px;line-height:1.55;font-size:13px;overflow-wrap:anywhere;background:#172a45;color:#e4edfa;white-space:pre-wrap}
-    .notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}
+    .notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}.notice.info{border-color:#657c9c;background:#172a45;color:#e4edfa}
     .notice.error{border-color:#a65c5c;background:#3b1b25;color:#ffe2e2}
     .small{font-size:12px;margin-top:22px;color:#8795a9}
     .hidden{display:none!important}
@@ -87,13 +87,32 @@
     }
   }
 
+  function hasFreshOtpSession(accessToken) {
+    try {
+      const payloadPart = accessToken.split('.')[1];
+      const normalized = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')));
+      const amr = Array.isArray(payload.amr) ? payload.amr : [];
+      const otp = amr.find((item) => item && item.method === 'otp');
+      const verifiedAt = Number(otp && otp.timestamp);
+      const age = Math.floor(Date.now() / 1000) - verifiedAt;
+      return Number.isFinite(verifiedAt) && age >= -60 && age <= 20 * 60;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function showRequestForm() {
-    const { data: { user }, error: userError } = await client.auth.getUser();
-    if (userError || !user) {
+    const { data: { session }, error: sessionError } = await client.auth.getSession();
+    const user = session && session.user;
+    if (sessionError || !user || !session.access_token || !hasFreshOtpSession(session.access_token)) {
       $('login-section').classList.remove('hidden');
       $('request-section').classList.add('hidden');
+      if (user && user.email) $('email').value = user.email;
+      notice('Untuk mengajukan penghapusan, minta dan buka tautan verifikasi email Delete Account terbaru. Sesi login biasa tidak cukup.', 'info');
       return;
     }
+
     const { data: profile, error } = await client.from('profiles')
       .select('full_name,role,company_id').eq('id', user.id).maybeSingle();
     if (error || !profile) {
@@ -108,14 +127,30 @@
     }
     $('login-section').classList.add('hidden');
     $('request-section').classList.remove('hidden');
-    $('signed-in-as').textContent = `Terverifikasi: ${user.email} • ${role.toUpperCase()}`;
+    $('signed-in-as').textContent = `Email terverifikasi: ${user.email} • ${role.toUpperCase()}`;
 
     const { data: existing, error: existingError } = await client.from('account_deletion_requests')
-      .select('status').eq('requester_id', user.id).order('created_at', {ascending:false}).limit(1);
-    if (!existingError && existing && existing.length && ['pending','approved','special_owner_review'].includes(existing[0].status)) {
+      .select('status,email_verified_at,request_source')
+      .eq('requester_id', user.id)
+      .in('status', ['pending','approved','special_owner_review'])
+      .order('created_at', {ascending:false}).limit(1);
+    if (existingError) throw existingError;
+
+    const row = existing && existing[0];
+    const alreadyVerified = row && row.email_verified_at && row.request_source === 'vercel';
+    if (row && (row.status === 'approved' || alreadyVerified)) {
       $('reason').disabled = true;
       $('submit-request').disabled = true;
-      notice('Permintaan penghapusan akun Anda sudah tercatat. Status: ' + existing[0].status + '. Tidak perlu mengirim permintaan baru.', 'success');
+      notice(row.status === 'approved'
+        ? 'Permintaan lama sudah disetujui. Hubungi CEO/ECC jika permintaan tersebut dibuat sebelum konfirmasi email web.'
+        : 'Permintaan penghapusan akun Anda sudah diverifikasi dan tercatat. Tunggu keputusan CEO/ECC.', 'success');
+    } else if (row) {
+      $('reason').disabled = false;
+      $('submit-request').disabled = false;
+      notice('Ditemukan permintaan lama yang belum memiliki verifikasi email web. Kirim alasan kembali untuk menyelesaikan verifikasi dan mengamankan permintaan tersebut.', 'info');
+    } else {
+      $('reason').disabled = false;
+      $('submit-request').disabled = false;
     }
   }
 
@@ -146,35 +181,27 @@
     if (reason.length < 10) return notice('Alasan pengajuan minimal 10 karakter.', 'error');
     setBusy(button, true, 'KIRIM PERMINTAAN PENGHAPUSAN');
     try {
-      const { data: { user }, error: userError } = await client.auth.getUser();
-      if (userError || !user) throw new Error('Sesi verifikasi tidak ditemukan. Ulangi verifikasi email.');
-      const { data: profile, error: profileError } = await client.from('profiles')
-        .select('full_name,role,company_id').eq('id', user.id).maybeSingle();
-      if (profileError || !profile) throw new Error('Profil akun tidak ditemukan.');
-      const role = String(profile.role || '').toLowerCase();
-      if (!['spg','tl','ceo','super_admin'].includes(role)) throw new Error('Peran akun tidak memenuhi syarat.');
-      const { data: existing, error: existingError } = await client.from('account_deletion_requests')
-        .select('status').eq('requester_id', user.id).order('created_at', {ascending:false}).limit(1);
-      if (existingError) throw existingError;
-      if (existing && existing.length && ['pending','approved','special_owner_review'].includes(existing[0].status)) {
-        throw new Error('Permintaan penghapusan akun Anda sudah tercatat.');
+      const { data: { session }, error: sessionError } = await client.auth.getSession();
+      if (sessionError || !session || !hasFreshOtpSession(session.access_token)) {
+        throw new Error('Sesi konfirmasi email tidak ditemukan atau sudah kedaluwarsa. Ulangi verifikasi melalui tautan email Delete Account.');
       }
-      const { error } = await client.from('account_deletion_requests').insert({
-        requester_id: user.id,
-        requester_name: profile.full_name || user.email || 'Pengguna',
-        requester_email: user.email,
-        requester_role: role,
-        company_id: profile.company_id,
-        reason,
-        status: role === 'super_admin' ? 'special_owner_review' : 'pending'
+      const { data, error } = await client.functions.invoke('submit-account-deletion-request', {
+        body: { reason }
       });
-      if (error) throw error;
-      notice('Permintaan penghapusan berhasil dikirim. Anda akan menerima tindak lanjut sesuai prosedur TKP AgencyPro.', 'success');
+      if (error) {
+        let message = error.message || 'Permohonan belum dapat dikirim.';
+        try {
+          const response = error.context && await error.context.json();
+          if (response && response.message) message = response.message;
+        } catch (_) {}
+        throw new Error(message);
+      }
+      if (!data || data.ok !== true) throw new Error((data && data.message) || 'Permohonan belum dapat dikirim.');
+      notice(data.message || 'Permohonan penghapusan berhasil dikirim dan menunggu keputusan CEO/ECC.', 'success');
       $('reason').disabled = true;
       button.disabled = true;
-      await client.auth.signOut();
     } catch (error) {
-      notice('Permintaan belum berhasil dikirim: ' + (error.message || 'Terjadi kesalahan.'), 'error');
+      notice('Permohonan belum berhasil dikirim: ' + (error.message || 'Terjadi kesalahan.'), 'error');
       setBusy(button, false, 'KIRIM PERMINTAAN PENGHAPUSAN');
     }
   });
