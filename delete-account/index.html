@@ -49,7 +49,7 @@
     <label for="reason">Alasan penghapusan akun</label>
     <textarea id="reason" minlength="10" maxlength="1000" placeholder="Tuliskan alasan pengajuan (minimal 10 karakter)..."></textarea>
     <button id="submit-request">KIRIM PERMINTAAN PENGHAPUSAN</button>
-    <p class="small">Pengajuan akan ditinjau pihak yang berwenang. Pengajuan tidak langsung menghapus akun atau riwayat transaksi perusahaan.</p>
+    <p class="small">Setelah Anda mengirim konfirmasi akhir, akun SPG/TL akan dihapus otomatis. Penghapusan CEO hanya dapat dilanjutkan jika sudah ada CEO pengganti yang aktif. CEO tunggal dan akun ECC/Super Admin mengikuti proses pengalihan atau peninjauan khusus. Riwayat transaksi dan laporan perusahaan tetap dipertahankan.</p>
   </section>
 
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
@@ -137,17 +137,17 @@
     if (existingError) throw existingError;
 
     const row = existing && existing[0];
-    const alreadyVerified = row && row.email_verified_at && row.request_source === 'vercel';
-    if (row && (row.status === 'approved' || alreadyVerified)) {
-      $('reason').disabled = true;
-      $('submit-request').disabled = true;
-      notice(row.status === 'approved'
-        ? 'Permintaan lama sudah disetujui. Hubungi CEO/ECC jika permintaan tersebut dibuat sebelum konfirmasi email web.'
-        : 'Permintaan penghapusan akun Anda sudah diverifikasi dan tercatat. Tunggu keputusan CEO/ECC.', 'success');
-    } else if (row) {
+    if (row && row.status === 'special_owner_review' && role === 'ceo') {
+      // A sole CEO may retry after a replacement CEO or company assets have been transferred.
       $('reason').disabled = false;
       $('submit-request').disabled = false;
-      notice('Ditemukan permintaan lama yang belum memiliki verifikasi email web. Kirim alasan kembali untuk menyelesaikan verifikasi dan mengamankan permintaan tersebut.', 'info');
+      notice('Permintaan sebelumnya menunggu pengalihan kepemilikan atau aset perusahaan. Setelah proses pengalihan selesai, masukkan alasan dan kirim ulang konfirmasi untuk melanjutkan.', 'info');
+    } else if (row && (row.status === 'pending' || row.status === 'approved' || row.status === 'special_owner_review')) {
+      $('reason').disabled = true;
+      $('submit-request').disabled = true;
+      notice(row.status === 'special_owner_review'
+        ? 'Permintaan khusus ECC/Super Admin sudah tercatat dan menunggu proses pemilik sistem.'
+        : 'Permintaan penghapusan akun Anda sudah tercatat dan sedang diproses. Hubungi CEO/ECC jika membutuhkan tindak lanjut.', 'success');
     } else {
       $('reason').disabled = false;
       $('submit-request').disabled = false;
@@ -197,7 +197,7 @@
         throw new Error(message);
       }
       if (!data || data.ok !== true) throw new Error((data && data.message) || 'Permohonan belum dapat dikirim.');
-      notice(data.message || 'Permohonan penghapusan berhasil dikirim dan menunggu keputusan CEO/ECC.', 'success');
+      notice(data.message || 'Permintaan penghapusan akun berhasil diproses.', 'success');
       $('reason').disabled = true;
       button.disabled = true;
     } catch (error) {
