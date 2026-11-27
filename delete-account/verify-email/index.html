@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <meta name="description" content="Verifikasi email TKP AgencyPro.">
-  <title>Verifikasi Email — TKP AgencyPro</title>
+  <meta name="description" content="Verifikasi pengajuan penghapusan akun TKP AgencyPro.">
+  <title>Verifikasi Penghapusan Akun — TKP AgencyPro</title>
   <style>
     :root{color-scheme:dark;--bg:#080f1f;--panel:#14243b;--gold:#d8b875;--text:#f5f7fb;--muted:#b9c3d3;--line:#4a5260}
     *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1b3150 0%,var(--bg) 58%);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--text);display:grid;place-items:center;padding:24px}
@@ -14,20 +14,21 @@
     h1{font-size:23px;margin:0 0 12px}p{color:var(--muted);line-height:1.65;margin:0 0 14px}.notice{padding:13px 15px;border:1px solid var(--line);border-radius:12px;margin-top:18px;line-height:1.55;overflow-wrap:anywhere}.notice.success{border-color:#398b68;background:#12372b;color:#d8f8e9}.notice.error{border-color:#a65c5c;background:#3b1b25;color:#ffe2e2}.notice.info{border-color:#657c9c;background:#172a45;color:#e4edfa}
     a{display:inline-block;margin-top:18px;padding:12px 18px;border-radius:12px;background:var(--gold);color:#111827;text-decoration:none;font-weight:800}.small{font-size:12px;margin-top:22px;color:#8795a9}
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <main>
-  <div class="brand">THE KINTIEW PROJECT · TKP AGENCYPRO</div>
+  <div class="brand">TKP AGENCYPRO</div>
   <div class="mark" id="mark">✉</div>
-  <h1 id="heading">Memeriksa Verifikasi Email</h1>
-  <p id="description">Mohon tunggu. Kami sedang memverifikasi alamat email Anda dengan aman.</p>
+  <h1 id="heading">Memverifikasi Akses Email</h1>
+  <p id="description">Mohon tunggu. Kami sedang memeriksa tautan verifikasi pengajuan penghapusan akun.</p>
   <div id="notice" class="notice info" role="status" aria-live="polite">Menghubungkan ke Supabase…</div>
-  <a id="return-link" href="com.example.tkpagencypro://login-callback/verified" hidden>KEMBALI KE TKP AGENCYPRO</a>
-  <p class="small">Jika verifikasi berhasil, silakan kembali ke aplikasi TKP AgencyPro dan masuk menggunakan akun Anda.</p>
+  <a id="continue-link" href="/delete-account/" hidden>LANJUTKAN PENGAJUAN</a>
+  <p class="small">Verifikasi email hanya membuktikan kepemilikan akun. Akun tidak langsung dihapus. Pengajuan tetap harus dikirim dan diproses sesuai prosedur TKP AgencyPro.</p>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (async () => {
+  'use strict';
   const SUPABASE_URL = 'https://iggqlasoxkaiybcnkrmb.supabase.co';
   const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_EitX8oTLAbHbyTNd4en9rQ_0zyj5v8r';
   const $ = (id) => document.getElementById(id);
@@ -39,31 +40,87 @@
     $('mark').textContent = state === 'success' ? '✓' : state === 'error' ? '!' : '✉';
   };
 
+  if (!window.supabase || !window.supabase.createClient) {
+    show('Layanan Tidak Tersedia', 'Pustaka autentikasi belum dapat dimuat.', 'Periksa koneksi internet lalu buka kembali tautan terbaru dari email.', 'error');
+    return;
+  }
+
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+  });
+
+  // Company identity is resolved from the authenticated user's own profile,
+  // never from URL parameters or untrusted browser-provided values.
+  async function loadCompanyBrand(userId) {
+    const brand = $('brand-label');
+    brand.textContent = 'TKP AGENCYPRO';
+    if (!userId) return;
+    try {
+      const { data: profile, error: profileError } = await client.from('profiles')
+        .select('company_id').eq('id', userId).maybeSingle();
+      if (profileError) throw profileError;
+      if (!profile || !profile.company_id) return;
+      const { data: company, error: companyError } = await client.from('companies')
+        .select('company_name').eq('id', profile.company_id).maybeSingle();
+      if (companyError) throw companyError;
+      if (company && typeof company.company_name === 'string' && company.company_name.trim()) {
+        brand.textContent = 'TKP AGENCYPRO • ' + company.company_name.trim().toLocaleUpperCase('id-ID');
+      }
+    } catch (error) {
+      console.warn('Nama perusahaan tidak dapat dimuat untuk halaman verifikasi penghapusan akun.', error);
+    }
+  }
+
   try {
     const params = new URLSearchParams(window.location.search);
     const tokenHash = params.get('token_hash');
     const type = params.get('type');
-    if (!tokenHash || type !== 'signup') {
-      show('Tautan Verifikasi Tidak Lengkap', 'Tautan yang dibuka tidak berisi informasi verifikasi yang diperlukan.', 'Buka kembali email verifikasi terbaru dari TKP AgencyPro. Jika tautan sudah pernah digunakan atau kedaluwarsa, minta bantuan administrator.', 'error');
-      return;
+    const code = params.get('code');
+    let data = null;
+    let error = null;
+
+    // Support Supabase PKCE redirect (code), implicit token redirect, and
+    // custom email templates that pass token_hash with type=magiclink.
+    if (code) {
+      ({ data, error } = await client.auth.exchangeCodeForSession(code));
+    } else if (tokenHash) {
+      if (type !== 'magiclink') throw new Error('Jenis tautan bukan verifikasi masuk yang valid.');
+      ({ data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' }));
+    } else if (window.location.hash) {
+      const hash = new URLSearchParams(window.location.hash.slice(1));
+      const accessToken = hash.get('access_token');
+      const refreshToken = hash.get('refresh_token');
+      const hashType = hash.get('type');
+      if (!accessToken || !refreshToken || (hashType && hashType !== 'magiclink')) {
+        throw new Error('Token verifikasi tidak ditemukan atau jenis tautan tidak sesuai.');
+      }
+      ({ data, error } = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }));
+    } else {
+      const errorDescription = params.get('error_description') || params.get('error');
+      throw new Error(errorDescription || 'Tautan verifikasi tidak lengkap. Minta tautan baru dari halaman penghapusan akun.');
     }
 
-    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-    });
-    const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'signup' });
     if (error) throw error;
-    if (!data || !data.user || !data.user.email_confirmed_at) {
-      throw new Error('Supabase belum mengembalikan status email terverifikasi.');
-    }
+    const user = data && data.user;
+    const session = data && data.session;
+    if (!user || !session || !user.email) throw new Error('Sesi verifikasi tidak berhasil dibuat.');
+    await loadCompanyBrand(user.id);
 
-    // Hapus token sekali pakai dari address bar setelah proses berhasil.
+    // Remove one-time credentials from the address bar before continuing.
     window.history.replaceState({}, document.title, window.location.pathname);
-    show('Email Berhasil Diverifikasi!', 'Alamat email akun TKP AgencyPro Anda sudah berhasil dikonfirmasi.', 'Verifikasi selesai. Tekan tombol di bawah untuk membuka aplikasi TKP AgencyPro, lalu login menggunakan email serta kata sandi yang didaftarkan.', 'success');
-    $('return-link').hidden = false;
+    show('Email Berhasil Diverifikasi', 'Kepemilikan email akun TKP AgencyPro berhasil diverifikasi.', 'Silakan lanjutkan ke halaman pengajuan. Anda masih perlu mengirim permintaan penghapusan secara sadar; akun tidak dihapus pada tahap verifikasi.', 'success');
+    $('continue-link').hidden = false;
+    $('continue-link').addEventListener('click', async (event) => {
+      event.preventDefault();
+      window.location.replace('/delete-account/');
+    });
   } catch (error) {
-    const message = error && error.message ? error.message : 'Terjadi kesalahan yang tidak diketahui.';
-    show('Verifikasi Email Belum Berhasil', 'Kami belum dapat mengonfirmasi alamat email Anda.', message + ' Pastikan Anda menggunakan tautan terbaru dan belum pernah menggunakannya sebelumnya.', 'error');
+    console.warn('Verifikasi email penghapusan akun gagal.', error);
+    show('Verifikasi Belum Berhasil', 'Kami belum dapat memverifikasi tautan email ini.', 'Tautan mungkin kedaluwarsa, sudah pernah digunakan, atau tidak sesuai. Kembali ke halaman penghapusan akun dan minta tautan verifikasi baru.', 'error');
+    const link = $('continue-link');
+    link.hidden = false;
+    link.textContent = 'KEMBALI KE HALAMAN PENGHAPUSAN';
+    link.href = '/delete-account/';
   }
 })();
 </script>
