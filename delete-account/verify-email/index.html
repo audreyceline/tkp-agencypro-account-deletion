@@ -18,7 +18,7 @@
 </head>
 <body>
 <main>
-  <div class="brand">TKP AGENCYPRO</div>
+  <div class="brand" id="brand-label">TKP AGENCYPRO</div>
   <div class="mark" id="mark">✉</div>
   <h1 id="heading">Memverifikasi Akses Email</h1>
   <p id="description">Mohon tunggu. Kami sedang memeriksa tautan verifikasi pengajuan penghapusan akun.</p>
@@ -103,7 +103,7 @@
     if (error) throw error;
     const user = data && data.user;
     const session = data && data.session;
-    if (!user || !session || !user.email) throw new Error('Sesi verifikasi tidak berhasil dibuat.');
+    if (!user || !session || !user.email || !session.access_token) throw new Error('Sesi verifikasi tidak berhasil dibuat.');
     await loadCompanyBrand(user.id);
 
     // Remove one-time credentials from the address bar before continuing.
